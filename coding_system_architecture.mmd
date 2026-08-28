@@ -1,0 +1,426 @@
+﻿sequenceDiagram
+    autonumber
+
+    actor User
+    participant Cron as Cron Scheduler
+    participant UI as Coding UI
+    participant SM as Session Manager
+    participant WM as Workspace Manager
+    participant Skill as Skill Manager
+    participant Context as Context Builder
+    participant Agent as Coding Agent
+    participant Policy as Approval Policy
+    participant Gateway as Model Gateway
+    participant Provider as OpenAI-Compatible Provider
+    participant Tools as Tool Executor
+    participant Shell as Shell / Terminal
+    participant WS as Workspace / Filesystem
+    participant Notify as Notification Service
+
+    Note over User,WS: 1. WORKSPACE LIFECYCLE
+
+    alt Create Workspace
+        User->>UI: User provides path(eg.D:\Apps\project1) default is current dirctory path
+        UI->>WM: createWorkspace(path) and also a Id
+        WM->>WS: Initialize workspace
+        WS-->>WM: Workspace ready
+        WM-->>UI: workspaceId,path
+    else Delete Workspace
+        User->>UI: Delete Workspace
+        UI->>WM: deleteWorkspace(workspaceId)
+        WM->>WS: Delete / delete filesystem and also delete the sessions of that workspace
+        WS-->>WM: Deleted
+        WM-->>UI: Workspace deleted
+    end
+
+    Note over User,WS: 2. SESSION LIFECYCLE
+
+    alt Create Session
+        User->>UI: New Session
+        UI->>SM: createSession(workspaceId)
+        SM->>WM: resolveWorkspace(workspaceId)
+        WM-->>SM: Workspace reference
+        SM->>SM: Initialize session defaults
+        Note over SM: provider<br/>model<br/>temperature<br/>approval mode<br/>loaded skills
+        SM-->>UI: sessionId
+    else Rename Session
+        User->>UI: Rename Session
+        UI->>SM: renameSession(sessionId, name)
+        SM-->>UI: Renamed
+    else Delete Session
+        User->>UI: Delete Session
+        UI->>SM: deleteSession(sessionId)
+        Note over SM: Workspace is NOT deleted
+        SM-->>UI: Session deleted
+    else Resume Session
+        User->>UI: Resume Session
+        UI->>SM: resume(sessionId)
+        SM->>SM: Load persisted session
+        Note over SM: Restore conversation<br/>model configuration<br/>approval policy<br/>workspaceId<br/>loaded skills
+        SM->>WM: resolveWorkspace(workspaceId)
+        alt Workspace available
+            WM->>WS: Attach workspace
+            WS-->>WM: Current workspace state
+            WM-->>SM: Workspace attached
+        end
+        SM->>Skill: Restore loaded skills
+        Skill-->>SM: Skill definitions
+        SM->>Context: Rebuild LLM-visible context
+        Note over Context: Include conversation<br/>agent tool results<br/>! command results<br/>loaded skill instructions
+        Note over Context: Exclude !! commands<br/>and !! command outputs
+        Context-->>SM: Context restored
+        alt Pending Tool Approval Exists
+            SM-->>UI: Restore Pending ToolRequest
+            UI-->>User: Show approval request
+        else No Pending Approval
+            SM-->>UI: Session ready
+        end
+    end
+
+    Note over User,WS: 3. MODEL CONFIGURATION
+
+    User->>UI: Open Model Selector
+    UI->>Gateway: List Providers / Models
+    par Query configured providers
+        Gateway->>Provider: List OpenAI models
+        Provider-->>Gateway: Models
+        Gateway->>Provider: List OpenRouter models
+        Provider-->>Gateway: Models
+        Gateway->>Provider: List Gemini models
+        Provider-->>Gateway: Models
+        Gateway->>Provider: List Groq models
+        Provider-->>Gateway: Models
+    end
+    Gateway->>Gateway: Normalize Model Catalog
+    Gateway-->>UI: Searchable Models
+    User->>UI: Search Models
+    UI->>UI: Filter Model Catalog
+    User->>UI: Select Provider
+    User->>UI: Select Model
+    User->>UI: Set Temperature
+    UI->>SM: Save ModelConfig
+    Note over SM: provider<br/>base URL / credentials reference<br/>model<br/>temperature<br/>capabilities
+
+    Note over User,WS: 4. APPROVAL MODE
+
+    User->>UI: Select Approval Mode
+    alt Read Only
+        UI->>SM: approvalMode = READ_ONLY
+    else Ask
+        UI->>SM: approvalMode = ASK
+    else Approve Everything
+        UI->>SM: approvalMode = AUTO_APPROVE
+    end
+
+    Note over User,WS: 5. MANUAL SKILL MANAGEMENT
+
+    alt Load Skill
+        User->>UI: Load Skill
+        UI->>Skill: load(skillId)
+        Skill->>Skill: Resolve + validate skill
+        Skill-->>UI: Skill definition
+        UI->>SM: attachSkill(sessionId, skillId)
+        SM-->>UI: Skill loaded
+    else Unload Skill
+        User->>UI: Unload Skill
+        UI->>Skill: unload(skillId)
+        UI->>SM: detachSkill(sessionId, skillId)
+        SM-->>UI: Skill unloaded
+    end
+
+    Note over User,WS: 6. USER-EXECUTED SHELL COMMANDS
+
+    alt !command - LLM CAN SEE
+        User->>UI: !<command>
+        UI->>WM: Resolve current workspace
+        WM-->>UI: Workspace
+        UI->>Shell: Execute command
+        Shell->>WS: Run inside workspace
+        WS-->>Shell: Runtime / Filesystem
+        Shell-->>UI: stdout + stderr + exitCode
+        UI-->>User: Display command result
+        UI->>SM: Persist visible shell event
+        SM->>Context: Add command + output
+        Note over Context: Command AND result<br/>are visible to LLM
+    else !!command - LLM CANNOT SEE
+        User->>UI: !!<command>
+        UI->>WM: Resolve current workspace
+        WM-->>UI: Workspace
+        UI->>Shell: Execute command
+        Shell->>WS: Run inside workspace
+        WS-->>Shell: Runtime / Filesystem
+        Shell-->>UI: stdout + stderr + exitCode
+        UI-->>User: Display command result
+        UI->>SM: Persist private shell event
+        Note over SM,Context: Do NOT inject command,<br/>output, or marker into LLM context
+    end
+
+    Note over User,WS: 7. USER SENDS CODING REQUEST
+
+    User->>UI: Send Prompt
+    UI->>SM: submit(sessionId, prompt)
+    SM->>WM: Resolve workspace
+    WM->>WS: Get current workspace state
+    WS-->>WM: Workspace state
+    WM-->>SM: Workspace reference
+    SM->>Skill: Get Loaded Skills
+    Skill-->>SM: Skill instructions + capabilities
+    SM->>Context: Build Agent Context
+    Note over Context: System instructions<br/>conversation history<br/>loaded skills<br/>visible ! shell events<br/>workspace context<br/>tool definitions
+    Context-->>SM: LLM-visible context
+    SM->>Agent: Start / Continue Agent Run
+
+    Note over User,WS: 8. INITIAL LLM REQUEST
+
+    Agent->>Gateway: generate(context, tools, ModelConfig)
+    Gateway->>Gateway: Resolve provider adapter
+    Note over Gateway: Normalize provider differences
+    Gateway->>Provider: OpenAI-compatible request
+    Provider-->>Gateway: Stream response / ToolRequest
+    Gateway->>Gateway: Normalize response
+    Gateway-->>Agent: Assistant response / ToolRequest
+
+    Note over User,WS: 9. CODING AGENT EXECUTION LOOP
+
+    loop Until Agent Completes or Stops
+        alt LLM Returns Final Response
+            Agent->>SM: Persist assistant response
+            SM-->>UI: Stream response
+            UI-->>User: Display response
+        else LLM Requests Clarification
+            Agent->>SM: requestClarification(query)
+            SM-->>UI: Display Clarification Request
+            UI-->>User: Show Request
+            User->>UI: Provide Info
+            UI->>SM: persistClarificationResponse(info)
+            SM->>Context: Add Info to Context
+        else LLM Requests Tool
+            Agent->>Policy: Evaluate ToolRequest
+            alt READ_ONLY MODE
+                alt Read-only Tool
+                    Policy-->>Agent: ALLOW
+                    Agent->>Tools: Execute ToolRequest
+                    alt Read / Search Files
+                        Tools->>WS: Read / search
+                        WS-->>Tools: Results
+                    else Git Inspection
+                        Tools->>WS: git status / diff / log
+                        WS-->>Tools: Git result
+                    end
+                    Tools-->>Agent: ToolResult
+                else Mutating / Execute Tool
+                    Policy-->>Agent: BLOCK
+                    Agent->>SM: Record policy denial
+                    SM->>Context: Add policy denial
+                end
+            else AUTO_APPROVE MODE
+                Policy-->>Agent: AUTO APPROVED
+                Agent->>Tools: Execute ToolRequest
+                alt File Read
+                    Tools->>WS: Read / search
+                    WS-->>Tools: Result
+                else File Modification
+                    Tools->>WS: Create / edit / patch / delete
+                    WS-->>Tools: Result
+                else Git Operation
+                    Tools->>WS: Execute Git operation
+                    WS-->>Tools: Result
+                else Shell Command
+                    Tools->>Shell: Execute command
+                    Shell->>WS: Run in workspace
+                    WS-->>Shell: Runtime environment
+                    Shell-->>Tools: stdout + stderr + exitCode
+                end
+                Tools-->>Agent: ToolResult
+            else ASK MODE
+                Policy-->>Agent: USER APPROVAL REQUIRED
+                Agent->>SM: Persist Pending ToolRequest
+                Note over SM: Session status =<br/>WAITING_FOR_APPROVAL
+                SM-->>UI: Approval Request
+                UI-->>User: Tool + Arguments + Reason
+                alt User Approves
+                    User->>UI: Approve
+                    UI->>SM: approve(toolRequestId)
+                    SM->>Agent: Tool Approved
+                    Agent->>Tools: Execute ToolRequest
+                    alt Workspace Operation
+                        Tools->>WS: Perform operation
+                        WS-->>Tools: Result
+                    else Shell Operation
+                        Tools->>Shell: Execute command
+                        Shell->>WS: Run in workspace
+                        WS-->>Shell: Environment
+                        Shell-->>Tools: stdout + stderr + exitCode
+                    end
+                    Tools-->>Agent: ToolResult
+                    SM->>SM: Clear Pending ToolRequest
+                else User Denies
+                    User->>UI: Deny
+                    UI->>SM: deny(toolRequestId)
+                    SM->>Agent: Tool Denied
+                    Agent->>Agent: Record denial
+                    SM->>SM: Clear Pending ToolRequest
+                else User Denies With Feedback
+                    User->>UI: Deny + Feedback
+                    UI->>SM: deny(toolRequestId, feedback)
+                    SM->>Agent: Tool Denied + User Feedback
+                    Agent->>Agent: Record denial + feedback
+                    SM->>SM: Clear Pending ToolRequest
+                end
+            end
+            Note over Agent,Provider: Continue reasoning after tool result,<br/>policy block, denial, or feedback
+            Agent->>Context: Append Result / Decision
+            Context-->>Agent: Updated context
+            Agent->>Gateway: Continue Agent Turn
+            Gateway->>Provider: OpenAI-compatible request
+            Provider-->>Gateway: Response / Next ToolRequest
+            Gateway-->>Agent: Normalized response
+        end
+    end
+
+    Note over User,WS: 10. RUN COMPLETION
+
+    Agent->>WS: Get final workspace state
+    WS-->>Agent: Modified files + Git status
+    Agent->>SM: Persist Run
+    Note over SM: Store run snapshot:<br/>provider + model<br/>temperature<br/>approval mode<br/>skills<br/>tool calls<br/>approvals / denials<br/>response
+    SM->>SM: Update lastActiveAt
+    SM-->>UI: Run completed
+    UI-->>User: Response + changed files
+
+    Note over User,WS: 11. LEAVE AND RESUME LATER
+
+    User->>UI: Close / Leave Session
+    UI->>SM: Persist Session State
+    alt Agent Idle
+        SM->>SM: status = IDLE
+    else Waiting For Approval
+        SM->>SM: status = WAITING_FOR_APPROVAL
+        Note over SM: Pending ToolRequest preserved
+    end
+    Note over SM: Session can later be resumed<br/>with workspace, skills, model settings,<br/>conversation and approval state intact
+
+    Note over User,WS: 12. CRON JOB LIFECYCLE (SCHEDULED RUNS)
+
+    alt Create Cron Job
+        User->>UI: New Cron Job
+        UI->>SM: createCronJob(workspaceId, schedule, promptTemplate, modelConfig, approvalMode, skills)
+        SM->>SM: Validate cron expression
+        SM->>SM: Store CronJob definition
+        Note over SM: workspaceId<br/>cron expression, e.g. every 30 minutes<br/>prompt template<br/>model config<br/>approval mode<br/>loaded skills<br/>enabled = true<br/>nextRunAt
+        SM-->>UI: cronJobId
+    else Edit Cron Job
+        User->>UI: Edit Cron Job
+        UI->>SM: updateCronJob(cronJobId, changes)
+        SM->>SM: Recompute nextRunAt
+        SM-->>UI: Cron job updated
+    else Pause Cron Job
+        User->>UI: Pause Cron Job
+        UI->>SM: setCronJobEnabled(cronJobId, false)
+        SM-->>UI: Cron job paused
+    else Resume Cron Job
+        User->>UI: Resume Cron Job
+        UI->>SM: setCronJobEnabled(cronJobId, true)
+        SM->>SM: Recompute nextRunAt
+        SM-->>UI: Cron job resumed
+    else Delete Cron Job
+        User->>UI: Delete Cron Job
+        UI->>SM: deleteCronJob(cronJobId)
+        Note over SM: Past run history retained<br/>Workspace is NOT deleted
+        SM-->>UI: Cron job deleted
+    else View Run History
+        User->>UI: Open Cron Job History
+        UI->>SM: getCronJobRuns(cronJobId)
+        SM-->>UI: Past runs (status, duration, diff summary)
+        UI-->>User: Display run history
+    end
+
+    Note over User,WS: 13. CRON JOB TRIGGERED EXECUTION (UNATTENDED)
+
+    loop Scheduler Tick
+        Cron->>Cron: Evaluate enabled cron expressions
+        Cron->>SM: getDueCronJobs(now)
+        SM-->>Cron: Due CronJob list
+
+        loop For each due CronJob
+            Cron->>SM: createSessionFromCronJob(cronJobId)
+            SM->>WM: resolveWorkspace(workspaceId)
+            alt Workspace busy with active user session
+                WM-->>SM: Workspace locked
+                SM->>Notify: notifyRunSkipped(cronJobId, reason)
+                Notify-->>User: Notification (run skipped)
+            else Workspace missing
+                WM-->>SM: Workspace unavailable
+                SM->>Notify: notifyRunFailed(cronJobId, workspace unavailable)
+                Notify-->>User: Notification (failure)
+            else Workspace available
+                WM->>WS: Attach workspace
+                WS-->>WM: Workspace state
+                WM-->>SM: Workspace attached
+                SM->>Skill: Restore configured skills
+                Skill-->>SM: Skill definitions
+                SM->>Context: Build Agent Context
+                Note over Context: System instructions<br/>cron prompt template<br/>loaded skills<br/>workspace context<br/>tool definitions
+                Context-->>SM: LLM-visible context
+                SM->>Agent: Start Unattended Agent Run
+                Note over SM: Session status = RUNNING (unattended)<br/>source = CRON, cronJobId
+
+                Agent->>Gateway: generate(context, tools, ModelConfig)
+                Gateway->>Provider: OpenAI-compatible request
+                Provider-->>Gateway: Response / ToolRequest
+                Gateway-->>Agent: Normalized response
+
+                loop Until Agent Completes or Stops
+                    alt LLM Returns Final Response
+                        Agent->>SM: Persist assistant response
+                    else LLM Requests Tool
+                        Agent->>Policy: Evaluate ToolRequest
+                        alt Cron Approval Mode: READ_ONLY or AUTO_APPROVE
+                            Policy-->>Agent: ALLOW / AUTO APPROVED
+                            Agent->>Tools: Execute ToolRequest
+                            alt Shell Command
+                                Tools->>Shell: Execute command
+                                Shell->>WS: Run in workspace
+                                WS-->>Shell: stdout + stderr + exitCode
+                                Shell-->>Tools: Result
+                            else Workspace Operation
+                                Tools->>WS: Perform operation
+                                WS-->>Tools: Result
+                            end
+                            Tools-->>Agent: ToolResult
+                            Agent->>Context: Append Result / Decision
+                            Context-->>Agent: Updated context
+                            Agent->>Gateway: Continue Agent Turn
+                            Gateway->>Provider: OpenAI-compatible request
+                            Provider-->>Gateway: Response / Next ToolRequest
+                            Gateway-->>Agent: Normalized response
+                        else Cron Approval Mode: ASK
+                            Policy-->>Agent: USER APPROVAL REQUIRED
+                            Agent->>SM: Persist Pending ToolRequest
+                            Note over SM: No live user present<br/>Session status = WAITING_FOR_APPROVAL
+                            SM->>SM: Queue approval for later review
+                            break Awaiting approval - unattended run pauses here
+                                Note over Agent: Run paused mid-turn<br/>resumes only when user reviews on return
+                            end
+                        end
+                    end
+                end
+
+                Agent->>WS: Get final workspace state
+                WS-->>Agent: Modified files + Git status
+                Agent->>SM: Persist Run
+                Note over SM: Store run snapshot tagged<br/>source = CRON, cronJobId<br/>provider + model + tool calls
+                SM->>SM: Update lastActiveAt, lastRunAt, nextRunAt
+                alt Run Completed Successfully
+                    SM->>Notify: notifyRunCompleted(cronJobId, summary)
+                    Notify-->>User: Notification (in-app / push)
+                else Run Suspended Awaiting Approval
+                    SM->>Notify: notifyApprovalNeeded(cronJobId)
+                    Notify-->>User: Notification (attention needed)
+                else Run Failed
+                    SM->>Notify: notifyRunFailed(cronJobId, error)
+                    Notify-->>User: Notification (failure)
+                end
+            end
+        end
+    end
