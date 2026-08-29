@@ -58,7 +58,7 @@ DEFAULT_MODELS = {
     "OpenAI": "gpt-4o-mini",
     "OpenRouter": "openai/gpt-4o-mini",
     "Groq": "llama-3.1-8b-instant",
-    "Google Gemini (OpenAI Compatible)": "gemini-1.5-flash",
+    "Google Gemini (OpenAI Compatible)": "gemini-3.1-flash-lite",
 }
 
 
