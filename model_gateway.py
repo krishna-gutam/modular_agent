@@ -1,7 +1,7 @@
 ﻿from dotenv import load_dotenv
 import os
-import requests
 import json
+import urllib.request
 
 load_dotenv()
 
@@ -80,50 +80,81 @@ class ModelGateway:
         }
     }
 
-    def _get_api_key(self, provider_name, mapping):
-        env_var = mapping[provider_name]["api_key_env"]
-        return os.environ.get(env_var)
+
+
+    def fetch_models(self, provider_name, config):
+        api_key = os.getenv(config["api_key_env"])
+        if not api_key:
+            return None
+
+        headers = config["headers_fn"](api_key)
+        req = urllib.request.Request(config["url"], headers=headers, method="GET")
+
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                
+                models_list = []
+                if isinstance(data, dict):
+                    if "data" in data and isinstance(data["data"], list):
+                        models_list = data["data"]
+                    elif "models" in data and isinstance(data["models"], list):
+                        models_list = data["models"]
+                elif isinstance(data, list):
+                    models_list = data
+
+                clean_models = []
+                for m in models_list:
+                    if isinstance(m, dict):
+                        model_id = m.get("id") or m.get("name") or str(m)
+                    else:
+                        model_id = str(m)
+                    clean_models.append(model_id)
+                return clean_models
+
+        except Exception:
+            return None
 
     def list_models(self):
-        all_models = {}
-        for name, config in self.PROVIDERS.items():
-            key = self._get_api_key(name, self.PROVIDERS)
-            if not key:
-                continue
-            
-            try:
-                response = requests.get(config["url"], headers=config["headers_fn"](key))
-                if response.status_code == 200:
-                    all_models[name] = response.json()
-            except Exception as e:
-                print(f"Error fetching models from {name}: {e}")
-        return all_models
+        all_discovered = {}
+        
+        for provider_name, config in self.PROVIDERS.items():
+            models = self.fetch_models(provider_name, config)
+            if models is not None:
+                all_discovered[provider_name] = models
 
-    def generate(self, provider_name, model, messages, temperature=0.7, tools=None):
-        if provider_name not in self.CONFIGS:
-            raise ValueError(f"Provider {provider_name} not supported.")
+        output_json = json.dumps(all_discovered, indent=2)
+        return output_json
+
+    def generate(self, provider_name, model, messages,temperature=0.7, tools=None):
+        config = self.CONFIGS.get(provider_name)
+        if not config:
+            return {"error": f"Error: Unknown provider '{provider_name}'"}
         
-        config = self.CONFIGS[provider_name]
-        key = self._get_api_key(provider_name, self.CONFIGS)
-        
-        if not key:
-            raise ValueError(f"API Key for {provider_name} not found in environment.")
+        api_key = os.getenv(config["api_key_env"])
+        if not api_key:
+            return {"error": f"Error: API key for {provider_name} ({config['api_key_env']}) is not set in environment."}
 
         payload = {
             "model": model,
             "messages": messages,
             "temperature": temperature
         }
-        
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
         
-        response = requests.post(
-            config["url"], 
-            headers=config["headers_fn"](key), 
-            json=payload
-        )
-        
-        response.raise_for_status()
-        return response.json()
+        req_data = json.dumps(payload).encode("utf-8")
+        headers = config["headers_fn"](api_key)
+        req = urllib.request.Request(config["url"], data=req_data, headers=headers, method="POST")
+
+        try:
+            with urllib.request.urlopen(req, timeout=60) as response:
+                res_json = json.loads(response.read().decode("utf-8"))
+                message = res_json["choices"][0]["message"]
+                return res_json
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8", errors="ignore")
+            return {"error": f"HTTP Error {e.code}: {error_body}"}
+        except Exception as e:
+            return {"error": f"Error: {str(e)}"}
