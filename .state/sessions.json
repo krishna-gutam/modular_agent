@@ -1,0 +1,48 @@
+{
+  "active_by_workspace": {
+    "7bcc229f-625f-443b-828a-6d2dafdc7f6c": "200b194e-24eb-440b-ac10-60e86656e21f"
+  },
+  "sessions": [
+    {
+      "id": "200b194e-24eb-440b-ac10-60e86656e21f",
+      "workspace_id": "7bcc229f-625f-443b-828a-6d2dafdc7f6c",
+      "name": "0",
+      "provider": "Groq",
+      "model": "openai/gpt-oss-120b",
+      "temperature": 0.0,
+      "messages": [
+        {
+          "role": "user",
+          "content": "which tools you have"
+        },
+        {
+          "role": "assistant",
+          "content": "I have a small set of built\u2011in helper tools that I can invoke when needed:\n\n| Tool | What it does | How I call it |\n|------|--------------|---------------|\n| **`read_file`** | Reads the contents of a file in the workspace (up to 1\u202f000 lines). You can specify a starting line number (1\u2011indexed). | `functions.read_file({ path: \"\u2026\", start_line?: N })` |\n| **`apply_patch`** | Replaces a snippet of code in a file with a new snippet. It uses fuzzy matching to locate the old code, then writes the replacement. You must provide the file path, the exact (or approximate) old code, the new code, and a short justification for the change. | `functions.apply_patch({ file_path: \"\u2026\", old_code: \"\u2026\", new_code: \"\u2026\", justification: \"\u2026\" })` |\n\nThese are the only external actions I can perform. All other reasoning, explanations, and conversation happen purely within the chat. If you need me to look at a file or modify code, just let me know which file and what you\u2019d like to see or change!"
+        },
+        {
+          "role": "user",
+          "content": "read chatbot.py"
+        },
+        {
+          "role": "assistant",
+          "content": ""
+        }
+      ],
+      "status": "IDLE",
+      "created_at": 1787999342.2446818,
+      "last_active_at": 1788002407.9238634
+    },
+    {
+      "id": "0a704356-4a30-4bcb-830a-35c4e0e9ccfa",
+      "workspace_id": "7bcc229f-625f-443b-828a-6d2dafdc7f6c",
+      "name": "1",
+      "provider": "Google Gemini (OpenAI Compatible)",
+      "model": "models/gemini-3.1-flash-lite",
+      "temperature": 0.7,
+      "messages": [],
+      "status": "IDLE",
+      "created_at": 1787999493.8615441,
+      "last_active_at": 1787999493.8615441
+    }
+  ]
+}

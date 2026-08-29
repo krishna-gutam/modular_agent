@@ -1,0 +1,26 @@
+{
+  "active_id": "7bcc229f-625f-443b-828a-6d2dafdc7f6c",
+  "workspaces": [
+    {
+      "id": "484876d8-b70e-4c16-8fa7-fb9ed91f60c6",
+      "path": "D:\\Apps\\agent\\agi4\\app",
+      "name": "app",
+      "created_at": 1787997480.8534405,
+      "last_active_at": 1787997576.9692187
+    },
+    {
+      "id": "0a66a287-6334-4bff-8588-92b64d2eb641",
+      "path": "D:\\Apps\\agent\\agi4\\app1",
+      "name": "app1",
+      "created_at": 1787997530.8841896,
+      "last_active_at": 1787997530.8841896
+    },
+    {
+      "id": "7bcc229f-625f-443b-828a-6d2dafdc7f6c",
+      "path": "D:\\Apps\\agent\\agi4\\app2",
+      "name": "app2",
+      "created_at": 1787997545.8611894,
+      "last_active_at": 1788002363.2378337
+    }
+  ]
+}
