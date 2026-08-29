@@ -40,42 +40,29 @@
 
     alt Create Session
         User->>UI: New Session (default name is uuid)
-        UI->>SM: createSession(current active workspace)
+        UI->>SM: createSession(in current active workspace)
         SM->>WM: resolveWorkspace(current active workspace)
         WM-->>SM: current active workspace reference
         SM->>SM: Initialize session defaults
-        Note over SM: [provider<br/>model<br/>temperature<br/>approval mode<br/>loaded skills]<br/>default values: <br/>[OpenRouter, openrouter/free, 0.0, ASK, []]
+        Note over SM: [provider<br/>model<br/>temperature]
         SM-->>UI: session name
     else Rename Session
         User->>UI: Rename Session
-        UI->>SM: renameSession(current session name, new name)
+        UI->>SM: renameSession(session name, new name)
         SM-->>UI: Renamed
     else Delete Session
         User->>UI: Delete Session
-        UI->>SM: deleteSession(current session name)
+        UI->>SM: deleteSession(session name)
         SM-->>UI: Session deleted
-    else Resume Session
-        User->>UI: Resume Session, list sessions in current active workspace
+    else switch session
+        User->>UI: list sessions in current active workspace
         UI->>SM: listSessions(current active workspace)
         SM-->>UI: list of sessions in current active workspace
-        User->>UI: Select session to resume
-        UI->>SM: resume(current active workspace, selected session name)
+        User->>UI: Select session to switch
+        UI->>SM: switchSession(current active workspace, selected session name)
         SM->>SM: Load persisted selected session
-        Note over SM: Restore conversation<br/>model configuration<br/>approval policy<br/>workspace name<br/>loaded skills
-        SM->>WM: resolveWorkspace(workspace name)
-        end
-        SM->>Skill: Restore loaded skills
-        Skill-->>SM: Skill definitions
-        SM->>Context: Rebuild LLM-visible context
-        Note over Context: Include conversation<br/>agent tool results<br/>! command results<br/>loaded skill instructions
-        Note over Context: Exclude !! commands<br/>and !! command outputs
-        Context-->>SM: Context restored
-        alt Pending Tool Approval Exists
-            SM-->>UI: Restore Pending ToolRequest
-            UI-->>User: Show approval request
-        else No Pending Approval
-            SM-->>UI: Session ready
-        end
+        Note over SM: Restore conversation<br/>model configuration
+        SM-->>UI: Session ready
     end
 
     Note over User,WS: 3. MODEL CONFIGURATION
