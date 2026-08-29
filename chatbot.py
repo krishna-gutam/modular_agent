@@ -587,17 +587,28 @@ def main():
         messages.append({"role": "user", "content": user_input})
         sm.set_status(session, "RUNNING")
 
-        print(f"{DIM}Calling {provider} ({model})...{RESET}")
-        response = gateway.generate(provider, model, messages, temperature=temperature, tools=TOOLS)
+        # Loop until we get a plain assistant reply: a single turn may
+        # involve one or more rounds of tool calls before the model is
+        # ready to answer, so we keep feeding tool results back in.
+        while True:
+            print(f"{DIM}Calling {provider} ({model})...{RESET}")
+            response = gateway.generate(provider, model, messages, temperature=temperature, tools=TOOLS)
 
-        msg = response.get("message", {})
+            if show_raw:
+                print(f"{DIM}{json.dumps(response, indent=2)}{RESET}")
 
-        tool_calls = msg.get("tool_calls")
-        if tool_calls:
-            messages.append(msg)
-            print(f"{model}: [Calling tools...]")
+            # generate() returns the raw API payload, e.g.
+            # {"choices": [{"message": {...}}], ...} or {"error": "..."} -
+            # the message lives under choices[0], not at the top level.
+            choices = response.get("choices") or [{}]
+            msg = choices[0].get("message") or {}
 
-            for tc in tool_calls:
+            tool_calls = msg.get("tool_calls")
+            if tool_calls:
+                messages.append(msg)
+                print(f"{model}: [Calling tools...]")
+
+                for tc in tool_calls:
                     call_id = tc["id"]
                     fn_name = tc["function"]["name"]
                     try:
@@ -605,35 +616,42 @@ def main():
                     except Exception:
                         fn_args = {}
                     print(f"{model}: [Calling tools...] {fn_name} {fn_args}")
-                    approval=input(f"{model}: [Approve this tool call? (y/n): ")
+                    approval = input(f"{model}: [Approve this tool call? (y/n)]: ").strip().lower()
                     if approval == "y":
                         tool_output = execute_tool(fn_name, fn_args)
                         print(f"[Tool Output for {fn_name}]: {tool_output}")
+                    else:
+                        tool_output = json.dumps({"error": "Tool call declined by user."})
+                        print(f"{YELLOW}Tool call declined.{RESET}")
 
-                        messages.append({
+                    # Every tool_call_id from the assistant's turn needs a
+                    # matching tool response - approved or not - or the
+                    # next request to the API will be rejected.
+                    messages.append({
                         "role": "tool",
                         "tool_call_id": call_id,
-                        "content": tool_output
+                        "content": tool_output,
                     })
-            continue
 
-        if show_raw:
-            print(f"{DIM}{json.dumps(response, indent=2)}{RESET}")
+                sm.set_messages(session, messages)
+                continue  # ask the model again now that it has the tool results
 
-        reply, error = extract_reply(response)
-        if error:
-            print(f"{RED}Error: {error}{RESET}\n")
-            messages.pop()  # don't keep a user turn that got no reply
+            reply, error = extract_reply(response)
+            if error:
+                print(f"{RED}Error: {error}{RESET}\n")
+                if messages and messages[-1]["role"] == "user":
+                    messages.pop()  # don't keep a user turn that got no reply
+                sm.set_status(session, "IDLE")
+                break
+
+            messages.append({"role": "assistant", "content": reply})
+            # Persist assistant response (diagram: "Agent->>SM: Persist assistant
+            # response") and mark the run complete (Section 10: "Update
+            # lastActiveAt").
+            sm.set_messages(session, messages)
             sm.set_status(session, "IDLE")
-            continue
-
-        messages.append({"role": "assistant", "content": reply})
-        # Persist assistant response (diagram: "Agent->>SM: Persist assistant
-        # response") and mark the run complete (Section 10: "Update
-        # lastActiveAt").
-        sm.set_messages(session, messages)
-        sm.set_status(session, "IDLE")
-        print(f"{GREEN}assistant>{RESET} {reply}\n")
+            print(f"{GREEN}assistant>{RESET} {reply}\n")
+            break
 
 
 if __name__ == "__main__":

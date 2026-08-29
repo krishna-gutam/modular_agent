@@ -1,12 +1,12 @@
 {
-  "active_id": "7bcc229f-625f-443b-828a-6d2dafdc7f6c",
+  "active_id": "484876d8-b70e-4c16-8fa7-fb9ed91f60c6",
   "workspaces": [
     {
       "id": "484876d8-b70e-4c16-8fa7-fb9ed91f60c6",
       "path": "D:\\Apps\\agent\\agi4\\app",
       "name": "app",
       "created_at": 1787997480.8534405,
-      "last_active_at": 1787997576.9692187
+      "last_active_at": 1788003430.5612397
     },
     {
       "id": "0a66a287-6334-4bff-8588-92b64d2eb641",
@@ -20,7 +20,7 @@
       "path": "D:\\Apps\\agent\\agi4\\app2",
       "name": "app2",
       "created_at": 1787997545.8611894,
-      "last_active_at": 1788002363.2378337
+      "last_active_at": 1788002899.6880677
     }
   ]
 }
