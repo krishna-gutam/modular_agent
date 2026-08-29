@@ -12,17 +12,21 @@ Usage:
     python chatbot.py --provider OpenAI --model gpt-4o-mini --temperature 0.2
 
 In-chat commands (type these instead of a message):
-    /help              Show this list of commands
-    /providers         List configured providers and whether a key is set
-    /provider <name>   Switch provider (keeps conversation history)
-    /model <name>      Switch model
-    /models            Fetch live model list for the current provider
-    /system <text>     Set/replace the system prompt
-    /temp <value>      Set sampling temperature (e.g. /temp 0.3)
-    /history           Print the full conversation so far
-    /reset             Clear conversation history (keeps system prompt)
-    /raw               Toggle printing the raw JSON response from the API
-    /quit or /exit     Leave the chat
+    /help                    Show this list of commands
+    /providers               List configured providers and whether a key is set
+    /provider <name>         Switch provider (keeps conversation history)
+    /model <name>            Switch model
+    /models                  Fetch live model list for the current provider
+    /system <text>           Set/replace the system prompt
+    /temp <value>            Set sampling temperature (e.g. /temp 0.3)
+    /history                 Print the full conversation so far
+    /reset                   Clear conversation history (keeps system prompt)
+    /raw                     Toggle printing the raw JSON response from the API
+    /workspace               Show the current active workspace
+    /workspace list          List all known workspaces
+    /workspace new <path>    Create (or re-activate) a workspace at <path>
+    /workspace switch <sel>  Switch to a workspace by number or path
+    /quit or /exit           Leave the chat
 """
 
 import argparse
@@ -31,6 +35,7 @@ import os
 import sys
 
 from model_gateway import ModelGateway
+from workspace_manager import WorkspaceManager, WorkspaceError
 
 # ANSI colors (safe no-op looking codes on terminals that don't support them)
 DIM = "\033[2m"
@@ -82,20 +87,133 @@ def choose_provider(gateway):
         print(f"{RED}Unrecognized choice, try again.{RESET}")
 
 
+def format_workspace_line(ws, index=None, current_id=None):
+    pointer = f"{CYAN}→{RESET} " if ws.id == current_id else "  "
+    label = f"{index}. " if index is not None else ""
+    return f"{pointer}{label}{BOLD}{ws.name}{RESET} {DIM}({ws.path}){RESET}"
+
+
+def print_workspaces(wm):
+    workspaces = wm.list_workspaces()
+    current = wm.resolve_workspace()
+    current_id = current.id if current else None
+    print(f"\n{BOLD}Known workspaces:{RESET}")
+    if not workspaces:
+        print(f"{DIM}(none yet — use /workspace new <path>){RESET}")
+    for i, ws in enumerate(workspaces, start=1):
+        print(format_workspace_line(ws, index=i, current_id=current_id))
+    print()
+
+
+def print_current_workspace(wm):
+    ws = wm.resolve_workspace()
+    if ws is None:
+        print(f"{YELLOW}No active workspace.{RESET} Use /workspace new <path> to create one.")
+    else:
+        print(f"Active workspace: {CYAN}{ws.name}{RESET} {DIM}({ws.path}){RESET}")
+
+
+def setup_workspace(wm, requested_path):
+    """
+    Run the "1. WORKSPACE LIFECYCLE" flow at startup:
+      - If --workspace was passed, create/activate that path directly.
+      - Else if workspaces already exist, let the user create a new one
+        or switch to an existing one (defaulting to the most recent).
+      - Else, create one at the current directory (the diagram's default).
+    """
+    if requested_path:
+        try:
+            return wm.create_workspace(requested_path)
+        except WorkspaceError as e:
+            print(f"{RED}{e}{RESET}")
+            sys.exit(1)
+
+    existing = wm.list_workspaces()
+    if not existing:
+        # First run: default is current working directory, per the diagram.
+        ws = wm.create_workspace(os.getcwd())
+        print(f"{YELLOW}Created workspace at {ws.path}{RESET}")
+        return ws
+
+    print_workspaces(wm)
+    print(f"{DIM}Enter a number to switch to a workspace, a new path to create one,{RESET}")
+    choice = input(
+        f"{DIM}or press Enter to use the most recent one:{RESET} "
+    ).strip()
+
+    if not choice:
+        return wm.switch_workspace(1)  # most recent, per list_workspaces() ordering
+    if choice.isdigit():
+        try:
+            return wm.switch_workspace(choice)
+        except WorkspaceError as e:
+            print(f"{RED}{e}{RESET}")
+            return wm.switch_workspace(1)
+    try:
+        return wm.create_workspace(choice)
+    except WorkspaceError as e:
+        print(f"{RED}{e}{RESET}")
+        return wm.switch_workspace(1)
+
+
+def handle_workspace_command(wm, arg):
+    """Handle the /workspace [list|new <path>|switch <sel>] command."""
+    parts = arg.split(maxsplit=1)
+    sub = parts[0].lower() if parts else ""
+    rest = parts[1].strip() if len(parts) > 1 else ""
+
+    if not sub:
+        print_current_workspace(wm)
+        return
+
+    if sub == "list":
+        print_workspaces(wm)
+        return
+
+    if sub in ("new", "create"):
+        if not rest:
+            print(f"{RED}Usage: /workspace new <path>{RESET}")
+            return
+        try:
+            ws = wm.create_workspace(rest)
+            print(f"Workspace {CYAN}{ws.name}{RESET} ready at {DIM}{ws.path}{RESET}. "
+                  f"Working directory switched.")
+        except WorkspaceError as e:
+            print(f"{RED}{e}{RESET}")
+        return
+
+    if sub == "switch":
+        if not rest:
+            print(f"{RED}Usage: /workspace switch <number|path>{RESET}")
+            return
+        try:
+            ws = wm.switch_workspace(rest)
+            print(f"Switched to workspace {CYAN}{ws.name}{RESET} {DIM}({ws.path}){RESET}.")
+        except WorkspaceError as e:
+            print(f"{RED}{e}{RESET}")
+        return
+
+    print(f"{RED}Usage: /workspace [list|new <path>|switch <number|path>]{RESET}")
+
+
 def print_help():
     print(f"""
 {BOLD}Commands:{RESET}
-  /help              Show this list of commands
-  /providers         List configured providers and whether a key is set
-  /provider <name>   Switch provider (keeps conversation history)
-  /model <name>      Switch model
-  /models            Fetch live model list for the current provider
-  /system <text>     Set/replace the system prompt
-  /temp <value>      Set sampling temperature (e.g. /temp 0.3)
-  /history           Print the full conversation so far
-  /reset             Clear conversation history (keeps system prompt)
-  /raw               Toggle printing the raw JSON response from the API
-  /quit or /exit     Leave the chat
+  /help                    Show this list of commands
+  /providers               List configured providers and whether a key is set
+  /provider <name>         Switch provider (keeps conversation history)
+  /model <name>            Switch model
+  /models                  Fetch live model list for the current provider
+  /system <text>           Set/replace the system prompt
+  /temp <value>            Set sampling temperature (e.g. /temp 0.3)
+  /history                 Print the full conversation so far
+  /reset                   Clear conversation history (keeps system prompt)
+  /raw                     Toggle printing the raw JSON response from the API
+  /workspace               Show the current active workspace
+  /workspace list          List all known workspaces
+  /workspace new <path>    Create (or re-activate) a workspace at <path>
+  /workspace switch <sel>  Switch to a workspace by number or path
+  /quit or /exit           Leave the chat
 """)
 
 
@@ -145,9 +263,16 @@ def main():
     parser.add_argument("--model", help="Model name/id to use")
     parser.add_argument("--temperature", type=float, default=0.7, help="Sampling temperature")
     parser.add_argument("--system", help="Initial system prompt")
+    parser.add_argument(
+        "--workspace",
+        help="Workspace path to create/activate on startup (default: current directory, "
+             "or prompts if other workspaces already exist)",
+    )
     args = parser.parse_args()
 
     gateway = ModelGateway()
+    wm = WorkspaceManager()
+    workspace = setup_workspace(wm, args.workspace)
 
     provider = args.provider if args.provider in gateway.CONFIGS else None
     if provider is None:
@@ -176,11 +301,14 @@ def main():
     print(f"\n{BOLD}ModelGateway CLI Chatbot{RESET}")
     print(f"Provider: {CYAN}{provider}{RESET}  Model: {CYAN}{model}{RESET}  "
           f"Temp: {CYAN}{temperature}{RESET}")
+    print(f"Workspace: {CYAN}{workspace.name}{RESET} {DIM}({workspace.path}){RESET}")
     print(f"{DIM}Type /help for commands, /quit to exit.{RESET}\n")
 
     while True:
         try:
-            user_input = input(f"{CYAN}you>{RESET} ").strip()
+            ws_prompt = wm.resolve_workspace()
+            ws_label = ws_prompt.name if ws_prompt else "no-workspace"
+            user_input = input(f"{CYAN}you{RESET} {DIM}[{ws_label}]{RESET}{CYAN}>{RESET} ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\nBye!")
             break
@@ -238,6 +366,8 @@ def main():
             elif cmd == "/raw":
                 show_raw = not show_raw
                 print(f"Raw response printing: {CYAN}{'on' if show_raw else 'off'}{RESET}")
+            elif cmd == "/workspace":
+                handle_workspace_command(wm, arg)
             else:
                 print(f"{RED}Unknown command '{cmd}'. Type /help for the list.{RESET}")
             continue
