@@ -21,47 +21,48 @@
 
     alt Create Workspace
         User->>UI: User provides path(eg.D:\Apps\project1) default is current dirctory path
-        UI->>WM: createWorkspace(path) and also a Id
+        UI->>WM: createWorkspace(path)
         WM->>WS: Initialize workspace
         WS-->>WM: Workspace ready
-        WM-->>UI: workspaceId,path
-    else Delete Workspace
-        User->>UI: Delete Workspace
-        UI->>WM: deleteWorkspace(workspaceId)
-        WM->>WS: Delete / delete filesystem and also delete the sessions of that workspace
-        WS-->>WM: Deleted
-        WM-->>UI: Workspace deleted
+        WM-->>UI: workspace is created and current working directory is set to the workspace path
+    else Switch Workspace
+        User->>UI: Switch Workspace, list all workspaces
+        UI->>WM: listWorkspaces()
+        WM-->>UI: list of workspace paths
+        User->>UI: Select workspace to switch
+        UI->>WM: switch Workspace with selected workspace path
+        WM->>WS: Resolve selected workspace
+        WS-->>WM: Workspace ready
+        WM-->>UI: workspace is switched and current working directory is set to the  selected workspace path
     end
 
     Note over User,WS: 2. SESSION LIFECYCLE
 
     alt Create Session
-        User->>UI: New Session
-        UI->>SM: createSession(workspaceId)
-        SM->>WM: resolveWorkspace(workspaceId)
-        WM-->>SM: Workspace reference
+        User->>UI: New Session (default name is uuid)
+        UI->>SM: createSession(current active workspace)
+        SM->>WM: resolveWorkspace(current active workspace)
+        WM-->>SM: current active workspace reference
         SM->>SM: Initialize session defaults
-        Note over SM: provider<br/>model<br/>temperature<br/>approval mode<br/>loaded skills
-        SM-->>UI: sessionId
+        Note over SM: [provider<br/>model<br/>temperature<br/>approval mode<br/>loaded skills]<br/>default values: <br/>[OpenRouter, openrouter/free, 0.0, ASK, []]
+        SM-->>UI: session name
     else Rename Session
         User->>UI: Rename Session
-        UI->>SM: renameSession(sessionId, name)
+        UI->>SM: renameSession(current session name, new name)
         SM-->>UI: Renamed
     else Delete Session
         User->>UI: Delete Session
-        UI->>SM: deleteSession(sessionId)
-        Note over SM: Workspace is NOT deleted
+        UI->>SM: deleteSession(current session name)
         SM-->>UI: Session deleted
     else Resume Session
-        User->>UI: Resume Session
-        UI->>SM: resume(sessionId)
-        SM->>SM: Load persisted session
-        Note over SM: Restore conversation<br/>model configuration<br/>approval policy<br/>workspaceId<br/>loaded skills
-        SM->>WM: resolveWorkspace(workspaceId)
-        alt Workspace available
-            WM->>WS: Attach workspace
-            WS-->>WM: Current workspace state
-            WM-->>SM: Workspace attached
+        User->>UI: Resume Session, list sessions in current active workspace
+        UI->>SM: listSessions(current active workspace)
+        SM-->>UI: list of sessions in current active workspace
+        User->>UI: Select session to resume
+        UI->>SM: resume(current active workspace, selected session name)
+        SM->>SM: Load persisted selected session
+        Note over SM: Restore conversation<br/>model configuration<br/>approval policy<br/>workspace name<br/>loaded skills
+        SM->>WM: resolveWorkspace(workspace name)
         end
         SM->>Skill: Restore loaded skills
         Skill-->>SM: Skill definitions
