@@ -352,3 +352,15 @@ class SessionManager:
 
         # Fall back to matching by name (scoped to workspace if given)
         return self._find_by_name(identifier, workspace_id=ws.id if ws is not None else None)
+    
+    def remove_sessions_for_workspace(self, workspace_id: str) -> None:
+        """Drop all sessions belonging to a specific workspace."""
+        to_delete = [sid for sid, s in self._sessions.items() if s.workspace_id == workspace_id]
+        for sid in to_delete:
+            del self._sessions[sid]
+
+        # If the active session was in this workspace, clear it
+            if self._active_by_workspace.get(workspace_id):
+                del self._active_by_workspace[workspace_id]
+
+            self._save_registry()

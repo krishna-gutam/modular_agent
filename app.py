@@ -544,6 +544,7 @@ def render_prompts_panel(session: ChatSession) -> None:
             st.rerun()
 
 
+
 def render_sidebar(session: ChatSession) -> bool:
     """Draw the sidebar. Returns whether tools should be auto-approved."""
     with st.sidebar:
@@ -860,6 +861,29 @@ def render_prompts_tab(session: ChatSession) -> None:
                 st.caption("Bundled: " + ", ".join(prompt["files"]))
             st.code(prompt["body"], language="markdown")
 
+def render_workspaces_tab(session: ChatSession) -> None:
+    st.subheader("Registered Workspaces")
+    st.caption(f"Registry `.state/workspaces.json` (Unregistering does not delete files from disk)")
+
+    for ws in session.list_workspaces():
+        col1, col2 = st.columns([0.8, 0.2])
+
+        with col1:
+            label = f"📁 {ws.name}  ·  `{ws.path}`"
+            if ws.id == session.workspace.id:
+                label = "▶ " + label
+            st.markdown(label)
+
+        with col2:
+            # Don't let them delete the active workspace easily without switching first, 
+            # or handle it gracefully. Here we let them unregister any workspace.
+            if st.button("🗑️ Delete", key=f"del_ws_{ws.id}"):
+                error = session.delete_workspace(ws.id)
+                if error:
+                    st.error(error)
+                else:
+                    reset_workspace_widgets()
+                    st.rerun()
 
 # --- AUTHORING --------------------------------------------------------------
 
@@ -1169,6 +1193,7 @@ def render_transcript(session: ChatSession) -> None:
 
 def render_tool_approval(session: ChatSession, auto_approve: bool) -> None:
     """The approval gate shown whenever the model asked for a tool."""
+    print(">>> RENDERING TOOL APPROVAL UI NOW! <<<")
     with st.chat_message("assistant"):
         st.warning("⚠️ **The agent has requested to execute the following tool(s):**")
 
@@ -1317,7 +1342,10 @@ def main() -> None:
     st.set_page_config(page_title="Modular Agent", page_icon="💬", layout="wide")
 
     session = get_session()
+    print(f"AFTER get_session() -> session.pending is: {bool(session.pending)}")
+
     auto_approve = render_sidebar(session)
+    print(f"AFTER render_sidebar() -> session.pending is: {bool(session.pending)}")
 
     (
         tab_chat,
@@ -1329,6 +1357,7 @@ def main() -> None:
         tab_tools,
         tab_logs,
         tab_history,
+        tab_workspaces, # <-- Add this!
     ) = st.tabs(
         [
             "💬 Chat Interface",
@@ -1340,6 +1369,7 @@ def main() -> None:
             "🔧 Tools",
             "🗒️ Message Logs",
             "🕒 Manage Sessions",
+            "📂 Manage Workspaces", # <-- Add this!
         ]
     )
 
@@ -1366,8 +1396,13 @@ def main() -> None:
 
     with tab_edit:
         render_editor_tab(session)
+    
+    with tab_workspaces:
+        render_workspaces_tab(session)
 
+    print(f"RIGHT BEFORE tab_chat -> session.pending is: {bool(session.pending)}")
     with tab_chat:
+        print(f"INSIDE tab_chat -> session.pending is: {bool(session.pending)}")
         if session.provider:
             st.caption(
                 f"**Model:** `[{session.provider}] {session.model}` · "
@@ -1383,6 +1418,14 @@ def main() -> None:
 
         if session.last_error:
             st.error(session.last_error)
+
+        # --- 👇 ADD THESE PRINTS RIGHT HERE 👇 ---
+        print(f"DRAWING CHAT TAB. session.pending is: {bool(session.pending)}")
+        if session.pending:
+            print(f"--> There are {len(session.pending)} pending tools!")
+        else:
+            print(f"--> NO PENDING TOOLS. Why? Let's check last message role: {session.messages[-1].get('role') if session.messages else 'No messages'}")
+        # ----------------------------------------
 
         if session.pending:
             render_tool_approval(session, auto_approve)

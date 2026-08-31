@@ -152,6 +152,30 @@ class ChatSession:
         self._adopt(session)
         self._clear_run_state()
 
+    # Add this inside ChatSession in chat_session.py:
+
+    def delete_workspace(self, workspace_id: str) -> str | None:
+        try:
+            # 1. First, wipe out the sessions belonging to this workspace
+            self.sm.remove_sessions_for_workspace(workspace_id)
+
+            # 2. Then unregister the workspace itself
+            self.wm.remove_workspace(workspace_id)
+
+        except WorkspaceError as exc:
+            return str(exc)
+
+        # 3. Handle picking a new active workspace so the app doesn't crash
+        remaining = self.wm.list_workspaces()
+        if remaining:
+            # Switch to the next available workspace
+            self.switch_workspace(remaining[0].id)
+        else:
+            # If no workspaces are left, create a fresh one right here in cwd
+            self.create_workspace(os.getcwd())
+
+        return None
+
     # -- sessions ----------------------------------------------------------
 
     def _resolve_session(self, name: str | None):
@@ -174,10 +198,33 @@ class ChatSession:
         self.model = session.model or self.model or DEFAULT_MODELS.get(self.provider, "")
         if session.temperature is not None:
             self.temperature = session.temperature
+
         self.messages = list(session.messages)
+
         self.sm.update_model_config(
             session, provider=self.provider, model=self.model, temperature=self.temperature
         )
+
+        # --- PUT THIS AT THE VERY END OF _adopt() ---
+        self.pending = []
+        self.busy = False
+        self.last_error = None
+
+        if self.messages:
+            last_msg = self.messages[-1]
+            print(f"DEBUG _adopt -> Last message role: {last_msg.get('role')}")
+            if last_msg.get("role") == "assistant" and last_msg.get("tool_calls"):
+                print("DEBUG _adopt -> FOUND PENDING TOOLS!")
+                tool_calls = last_msg.get("tool_calls")
+                self.pending = [
+                    PendingCall(
+                        id=call.get("id"),
+                        name=call.get("function", {}).get("name", ""),
+                        args=self._parse_args(call),
+                    )
+                    for call in tool_calls
+                ]
+        # ---------------------------------------------
 
     def _preferred_provider(self) -> str:
         names = list(self.gateway.CONFIGS)
@@ -185,9 +232,18 @@ class ChatSession:
         return (keyed or names or [""])[0]
 
     def _clear_run_state(self) -> None:
-        self.pending = []
         self.busy = False
         self.last_error = None
+
+        # Only clear pending if there isn't a waiting tool call on the last message!
+        has_waiting_tools = False
+        if self.messages:
+            last_msg = self.messages[-1]
+            if last_msg.get("role") == "assistant" and last_msg.get("tool_calls"):
+                has_waiting_tools = True
+
+        if not has_waiting_tools:
+            self.pending = []
 
     def list_sessions(self) -> list:
         return self.sm.list_sessions()
