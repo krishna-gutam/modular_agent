@@ -810,46 +810,43 @@ def render_models_tab(session: ChatSession) -> None:
 
 def render_tools_tab(session: ChatSession) -> None:
     st.subheader("Registered Tools")
-    st.caption(
-        "Discovered by `tools/__init__.py` from every `@tool`-decorated function in `tools/`. "
-        "Choose which tools are allowed to be offered to the model."
-    )
-    # --- 👇 HELPFUL WARNING IF MASTER SWITCH IS OFF 👇 ---
+    st.caption("Choose which tools are allowed to be offered to the model.")
+
     if not session.tools_enabled:
-        st.warning("⚠️ **Tools are currently disabled globally.** Turn on **Enable Tools** in the sidebar to use them.")
-    # ---------------------------------------------------
-    from tools import TOOLS  # imported late so a reload picks up new files
+        st.warning("⚠️ **Tools are currently disabled globally.** Turn on **Enable Tools** in the sidebar.")
+
+    from tools import TOOLS 
 
     if not TOOLS:
-        st.info("No tools registered. Add one to `tools/` with the `@tool` decorator.")
+        st.info("No tools registered.")
         return
 
-    # Loop through every tool and render a checkbox + expander info
     for spec in TOOLS:
         function = spec.get("function", {})
         tool_name = function.get("name", "?")
 
-        # Is this tool currently enabled?
         is_currently_enabled = tool_name in session.enabled_tool_names
 
-        # Put a checkbox right alongside an expander for details
         col_box, col_exp = st.columns([0.03, 0.97])
 
         with col_box:
-            # When they click the checkbox, update session state immediately
             new_state = st.checkbox("Enable", value=is_currently_enabled, key=f"tool_toggle_{tool_name}", label_visibility="collapsed")
+
+            # --- DID IT CHANGE? SAVE IT! ---
             if new_state != is_currently_enabled:
                 if new_state:
                     session.enabled_tool_names.add(tool_name)
                 else:
                     session.enabled_tool_names.discard(tool_name)
+
+                # SAVE TO DISK IMMEDIATELY
+                session.save_tool_preferences()
                 st.rerun()
 
         with col_exp:
             with st.expander(f"🔧 {tool_name}"):
                 st.write(function.get("description") or "_no description_")
                 st.code(json.dumps(function.get("parameters", {}), indent=2), language="json")
-
 
 def render_skills_tab(session: ChatSession) -> None:
     st.subheader("Installed Skills")

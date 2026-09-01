@@ -107,9 +107,18 @@ class ChatSession:
         self.last_error: str | None = None
         self.tools_enabled = True
         
-        # --- 👇 ADD THIS LINE HERE 👇 ---
-        # By default, let's enable all known tool names upon startup
-        self.enabled_tool_names = {t.get("function", {}).get("name") for t in TOOLS if t.get("function", {}).get("name")}
+        # --- LOAD PERSISTED TOOLS OR DEFAULT TO ALL ---
+        if self.session.enabled_tool_names:
+            self.enabled_tool_names = set(self.session.enabled_tool_names)
+        else:
+            self.enabled_tool_names = {t.get("function", {}).get("name") for t in TOOLS if t.get("function", {}).get("name")}
+
+    # -- new method ------------------------------------------
+
+    def save_tool_preferences(self) -> None:
+        """Persist the current enabled tool choices to disk."""
+        self.session.enabled_tool_names = list(set(self.enabled_tool_names).intersection({t.get("function", {}).get("name") for t in TOOLS if t.get("function", {}).get("name")}))
+        self._save()
 
     # -- workspace ---------------------------------------------------------
 

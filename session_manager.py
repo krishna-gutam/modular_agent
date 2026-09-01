@@ -69,6 +69,7 @@ class Session:
         status="IDLE",
         created_at=None,
         last_active_at=None,
+        enabled_tool_names = None
     ):
         self.id = session_id
         self.workspace_id = workspace_id
@@ -81,6 +82,7 @@ class Session:
         self.status = status
         self.created_at = created_at if created_at is not None else time.time()
         self.last_active_at = last_active_at if last_active_at is not None else self.created_at
+        self.enabled_tool_names = enabled_tool_names if enabled_tool_names is not None else []
 
     def to_dict(self):
         return {
@@ -94,6 +96,7 @@ class Session:
             "status": self.status,
             "created_at": self.created_at,
             "last_active_at": self.last_active_at,
+            "enabled_tool_names": list(self.enabled_tool_names), # <-- WRITE IT DOWN
         }
 
     @classmethod
@@ -109,6 +112,7 @@ class Session:
             status=data.get("status", "IDLE"),
             created_at=data.get("created_at"),
             last_active_at=data.get("last_active_at"),
+            enabled_tool_names=data.get("enabled_tool_names"), # <-- READ IT BACK
         )
 
 
