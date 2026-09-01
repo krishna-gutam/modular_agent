@@ -1,33 +1,19 @@
 {
-  "active_id": "20d9d757-a2a9-4024-ad7b-fcf90971494e",
+  "active_id": "0a66a287-6334-4bff-8588-92b64d2eb641",
   "workspaces": [
     {
       "id": "484876d8-b70e-4c16-8fa7-fb9ed91f60c6",
       "path": "D:\\Apps\\agent\\agi4\\app",
       "name": "app",
       "created_at": 1787997480.8534405,
-      "last_active_at": 1788011448.9326367
+      "last_active_at": 1788221263.4263914
     },
     {
       "id": "0a66a287-6334-4bff-8588-92b64d2eb641",
       "path": "D:\\Apps\\agent\\agi4\\app1",
       "name": "app1",
       "created_at": 1787997530.8841896,
-      "last_active_at": 1787997530.8841896
-    },
-    {
-      "id": "7bcc229f-625f-443b-828a-6d2dafdc7f6c",
-      "path": "D:\\Apps\\agent\\agi4\\app2",
-      "name": "app2",
-      "created_at": 1787997545.8611894,
-      "last_active_at": 1788007841.9755802
-    },
-    {
-      "id": "20d9d757-a2a9-4024-ad7b-fcf90971494e",
-      "path": "D:\\Apps\\agent\\agi4\\app4",
-      "name": "app4",
-      "created_at": 1788010068.7759888,
-      "last_active_at": 1788028181.9898791
+      "last_active_at": 1788221329.3264563
     }
   ]
 }
