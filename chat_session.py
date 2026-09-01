@@ -106,6 +106,10 @@ class ChatSession:
         self.busy = False
         self.last_error: str | None = None
         self.tools_enabled = True
+        
+        # --- 👇 ADD THIS LINE HERE 👇 ---
+        # By default, let's enable all known tool names upon startup
+        self.enabled_tool_names = {t.get("function", {}).get("name") for t in TOOLS if t.get("function", {}).get("name")}
 
     # -- workspace ---------------------------------------------------------
 
@@ -452,11 +456,24 @@ class ChatSession:
     def step(self) -> None:
         """One gateway.generate() call — the body of the CLI's inner loop."""
         self.sm.set_status(self.session, "RUNNING")
+
+        # --- 👇 FILTER THE TOOLS HERE 👇 ---
+        active_tools = None
+        if self.tools_enabled:
+            from tools import TOOLS
+            active_tools = [
+                t for t in TOOLS 
+                if t.get("function", {}).get("name") in self.enabled_tool_names
+            ]
+        # ----------------------------------
+
+        
+
         try:
             response = self.gateway.generate(
                 self.provider, self.model, self.messages,
                 temperature=self.temperature,
-                tools=TOOLS if self.tools_enabled else None,
+                tools=active_tools,
             )
         except Exception as exc:  # network, auth, bad config…
             response = {"error": f"{type(exc).__name__}: {exc}"}
